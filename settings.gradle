@@ -1,0 +1,3 @@
+rootProject.name='VideoWallpaperSample'
+include ':app'
+include ':videowallpaper'
