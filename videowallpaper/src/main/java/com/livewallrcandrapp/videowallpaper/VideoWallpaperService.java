@@ -36,6 +36,7 @@ public class VideoWallpaperService extends WallpaperService {
      */
     private void registerBroadcastReceiver() {
         IntentFilter mIntentFilter = new IntentFilter(Intent.ACTION_SCREEN_ON);
+        mIntentFilter.addAction(Intent.ACTION_SCREEN_OFF);
         if ( mBroadcastReceiver == null ) {
             mBroadcastReceiver = new ScreenOnOffReceiver();
             registerReceiver(mBroadcastReceiver, mIntentFilter);
@@ -55,7 +56,7 @@ public class VideoWallpaperService extends WallpaperService {
         try {
             screenOn = intent.getBooleanExtra("screen_state", false);
         } catch (Exception exc) {
-
+            Log.e(TAG, "[onStartCommand] Exception error: "+exc.getMessage());
         }
 
         if (!screenOn) {
@@ -64,7 +65,7 @@ public class VideoWallpaperService extends WallpaperService {
             }
         } else {
             if (mMediaPlayer != null) {
-                mMediaPlayer.stop();
+                mMediaPlayer.seekTo(0);
             }
         }
         return START_NOT_STICKY;
@@ -77,8 +78,12 @@ public class VideoWallpaperService extends WallpaperService {
     public void onDestroy() {
         super.onDestroy();
         if (mBroadcastReceiver != null) {
+            Log.i(TAG, "[onDestroy] media player stopped and release");
+            mMediaPlayer.stop();
+            mMediaPlayer.release();
             unregisterReceiver(mBroadcastReceiver);
         }
+        Log.i(TAG, "[onDestroy] service is destroyed");
     }
 
     /**
@@ -137,7 +142,8 @@ public class VideoWallpaperService extends WallpaperService {
                         public void onPrepared(MediaPlayer mp) {
                             if (mSurfaceHolder != null) {
                                 mp.setSurface(mSurfaceHolder.getSurface());
-                                mp.setLooping(true);
+                                mp.setLooping(isLooping);
+                                mp.setVolume(0,0);
                                 mp.start();
                                 Log.i(TAG, "media player is started");
                             } else {

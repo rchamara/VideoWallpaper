@@ -82,6 +82,14 @@ public class VideoWallpaper {
     public void Set() {
         mVideoUri = mVideoUrlToUri();
         if (mVideoUri != null) {
+
+            try {
+                WallpaperManager wallpaperManager = WallpaperManager.getInstance(mContext);
+                wallpaperManager.clear();
+            } catch (Exception exc) {
+                Log.e(TAG, "[Set] can not clear wallpaper Exception error: "+exc.getMessage());
+            }
+
             Intent mIntent = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
             mIntent.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
                     new ComponentName(mContext, VideoWallpaperService.class));

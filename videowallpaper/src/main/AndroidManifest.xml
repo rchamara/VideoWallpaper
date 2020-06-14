@@ -6,9 +6,9 @@
         android:required="true" >
     </uses-feature>
 
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <application
-        android:allowBackup="true"
-        >
+        android:allowBackup="true">
 
         <service
             android:name=".VideoWallpaperService"
@@ -24,6 +24,7 @@
             </meta-data>
         </service>
 
+        <receiver android:name=".ScreenOnOffReceiver" />
     </application>
 
 </manifest>
