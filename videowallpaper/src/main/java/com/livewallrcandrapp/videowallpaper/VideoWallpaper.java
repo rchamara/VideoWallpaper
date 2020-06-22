@@ -16,6 +16,7 @@ public class VideoWallpaper {
     private boolean isLooping = false;
     private Context mContext;
     private Uri mVideoUri;
+    private String mimeType = null;
 
     /**
      * set application context
@@ -37,6 +38,20 @@ public class VideoWallpaper {
         this.mVideoUrl = url;
     }
 
+    private void getMimeTypeFromUrl() {
+        if (this.mVideoUri != null) {
+            try {
+                mimeType = mContext.getContentResolver().getType(mVideoUri);
+                Log.i(TAG, "mime type: "+mimeType);
+            } catch (Exception exc) {
+                Log.e(TAG, "[getMimeTypeFromUrl] exception error: "+exc.getMessage());
+            }
+        } else {
+            Log.e(TAG, "[getMimeTypeFromUrl] url is null");
+        }
+
+    }
+
     /**
      * save user relate data in shared_preferences
      */
@@ -45,6 +60,7 @@ public class VideoWallpaper {
             SharedPreferences mSharedPreferences = mContext.getSharedPreferences(Utility.VIDEO_WALLPAPER_DATA, Context.MODE_PRIVATE);
             SharedPreferences.Editor mEditor = mSharedPreferences.edit();
             mEditor.putString(Utility.M_VIDEO_URL,mVideoUrl);
+            mEditor.putString(Utility.MIME_TYPE, mimeType);
             mEditor.putBoolean(Utility.IS_LOOPING, isLooping);
             mEditor.commit();
             Log.i(TAG,"[saveDataInSharedPreferences] saved data");
@@ -82,7 +98,7 @@ public class VideoWallpaper {
     public void Set() {
         mVideoUri = mVideoUrlToUri();
         if (mVideoUri != null) {
-
+            getMimeTypeFromUrl();
             try {
                 WallpaperManager wallpaperManager = WallpaperManager.getInstance(mContext);
                 wallpaperManager.clear();

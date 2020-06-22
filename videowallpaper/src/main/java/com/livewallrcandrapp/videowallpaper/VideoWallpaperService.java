@@ -5,20 +5,72 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+
 import android.media.MediaPlayer;
 import android.net.Uri;
+import android.os.Handler;
+import android.provider.MediaStore;
 import android.service.wallpaper.WallpaperService;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.SurfaceHolder;
+import android.view.WindowManager;
+
+import java.io.IOException;
+
 
 public class VideoWallpaperService extends WallpaperService {
 
     private static final String TAG = "VideoWallpaperService";
+
+    /**
+     * media player instances
+     */
     private MediaPlayer mMediaPlayer;
+
+    /**
+     * broadcast receiver instance
+     * for SCREEN_ON /OFF
+     */
     private BroadcastReceiver mBroadcastReceiver = null;
+
+    /**
+     * instance for source url
+     * both image and video
+     */
     private Uri mVideoUri;
+
+    /**
+     * source url as string come from the shared data
+     * both image and video
+     */
     private String mVideoURL;
+
+    /**
+     * mime type of file
+     * video:- video/mp4 or any other format
+     * image:- image/png or any other format
+     */
+    private String mMimeType;
+
+    /**
+     * is video must need looping
+     */
     private boolean isLooping;
+
+    /**
+     * is source video or image
+     */
+    private static boolean isVideo;
+
+    /**
+     * set image source to bitmap object
+     */
+    private Bitmap mImageWallpaper;
 
     /**
      * call when engine is created
@@ -60,11 +112,11 @@ public class VideoWallpaperService extends WallpaperService {
         }
 
         if (!screenOn) {
-            if (mMediaPlayer != null) {
+            if (mMediaPlayer != null && isVideo) {
                 mMediaPlayer.start();
             }
         } else {
-            if (mMediaPlayer != null) {
+            if (mMediaPlayer != null && isVideo) {
                 mMediaPlayer.seekTo(0);
             }
         }
@@ -79,11 +131,35 @@ public class VideoWallpaperService extends WallpaperService {
         super.onDestroy();
         if (mBroadcastReceiver != null) {
             Log.i(TAG, "[onDestroy] media player stopped and release");
-            mMediaPlayer.stop();
-            mMediaPlayer.release();
+            if (mMediaPlayer != null && isVideo) {
+                mMediaPlayer.stop();
+                mMediaPlayer.release();
+            }
             unregisterReceiver(mBroadcastReceiver);
         }
         Log.i(TAG, "[onDestroy] service is destroyed");
+    }
+
+    /**
+     * check file type is video or image
+     */
+    private void checkFileType() {
+        if (!mMimeType.equals(Utility.EMPTY)) {
+            try {
+                String[] words = mMimeType.split("/");
+                if (words[0].equals("video")) {
+                    isVideo = true;
+                } else if(words[0].equals("image")) {
+                    isVideo = false;
+                } else {
+                    Log.i(TAG, "[checkFileType] file type not matched");
+                }
+            } catch (Exception exc) {
+                Log.e(TAG, "[checkFileType] exception error: "+exc.getMessage());
+            }
+        } else {
+            Log.e(TAG, "[checkFileType] mime type is null");
+        }
     }
 
     /**
@@ -94,13 +170,68 @@ public class VideoWallpaperService extends WallpaperService {
             SharedPreferences mSharedPreferences = getApplicationContext().getSharedPreferences(Utility.VIDEO_WALLPAPER_DATA, Context.MODE_PRIVATE);
             mVideoURL = mSharedPreferences.getString(Utility.M_VIDEO_URL, null);
             isLooping = mSharedPreferences.getBoolean(Utility.IS_LOOPING, false);
+            mMimeType = mSharedPreferences.getString(Utility.MIME_TYPE,Utility.EMPTY);
             Log.i(TAG,"mVideoURL : " +mVideoURL);
             Log.i(TAG, "isLooping : " +isLooping);
+            Log.i(TAG, "mimeType : "+mMimeType);
         } catch (Exception exc) {
-            Log.e(TAG, "error in getSharedPreferences: " +exc.getMessage());
+            Log.e(TAG, "[getSharedPreferencesData] error in getSharedPreferences: " +exc.getMessage());
         }
 
     }
+
+    /**
+     * get image from uri and resize
+     */
+    private void setImageWallpaperMatrix() {
+        Bitmap bitmap = null;
+        try {
+            if (mVideoUri != null) {
+                bitmap = MediaStore.Images.Media.getBitmap(this.getContentResolver(), mVideoUri);
+                mImageWallpaper = setScaleToScreenSize(bitmap);
+            } else {
+                Log.e(TAG, "[setImageWallpaperMatrix] URL is null");
+            }
+        } catch (IOException exc) {
+            Log.e(TAG, "[setImageWallpaperMatrix] exception error: "+exc.getMessage());
+        }
+    }
+
+    /**
+     * resize bitmap to fit with device screen
+     * @param original
+     * @return
+     */
+    private Bitmap setScaleToScreenSize(Bitmap original) {
+        Bitmap outputBitmap = null;
+        try {
+            DisplayMetrics metrics = new DisplayMetrics();
+            WindowManager mWindowManager = ((WindowManager) getApplicationContext().getSystemService(WINDOW_SERVICE));
+            mWindowManager.getDefaultDisplay().getMetrics(metrics);
+
+            int original_width = original.getWidth();
+            int original_height = original.getHeight();
+
+            int metrics_width = metrics.widthPixels;
+            int metrics_height = metrics.heightPixels;
+
+            float scaledWidth = (float) metrics_width/ (float) original_width;
+            float scaledHeight = (float) metrics_height/ (float) original_height;
+
+            //crate a matrix for scaled image
+            Matrix matrix = new Matrix();
+            matrix.postScale(scaledWidth, scaledHeight);
+
+            //recreate bitmap
+            outputBitmap = Bitmap.createBitmap(original, 0, 0, original_width, original_height, matrix, true);
+
+        } catch (Exception exc) {
+           Log.e(TAG, "[setScaleToScreenSize] exception error: "+exc.getMessage());
+        }
+        return outputBitmap;
+    }
+
+
 
     /**
      * convert URL to Uri object
@@ -111,7 +242,7 @@ public class VideoWallpaperService extends WallpaperService {
         try {
             uri = Uri.parse(mVideoURL);
         } catch (Exception exc) {
-            Log.e(TAG, "Can not convert URL: "+exc.getMessage());
+            Log.e(TAG, "[mVideoUrlToUri] Can not convert URL: "+exc.getMessage());
         }
         return uri;
     }
@@ -122,13 +253,20 @@ public class VideoWallpaperService extends WallpaperService {
     class VideoEngine extends Engine {
         private static final String TAG = "VideoEngine";
         private SurfaceHolder mSurfaceHolder;
+        private final Handler mHandler = new Handler();
+        private Runnable mDrawThread;
+        private int mFrameRate = 20;
+        private boolean mVisible;
 
         public VideoEngine() {
             super();
+            // image/jpeg video/mp4
             getSharedPreferencesData();
+            checkFileType();
             mVideoUri = mVideoUrlToUri();
             Log.i(TAG, "[Video engine started]");
-            if (mVideoUri != null) {
+            if (mVideoUri != null && isVideo) {
+                Log.i(TAG, "Url is video");
                 try {
                     mMediaPlayer.setDataSource(getApplicationContext(), mVideoUri);
                     mMediaPlayer.prepareAsync();
@@ -142,7 +280,7 @@ public class VideoWallpaperService extends WallpaperService {
                         public void onPrepared(MediaPlayer mp) {
                             if (mSurfaceHolder != null) {
                                 mp.setSurface(mSurfaceHolder.getSurface());
-                                mp.setLooping(isLooping);
+                                mp.setLooping(true);
                                 mp.setVolume(0,0);
                                 mp.start();
                                 Log.i(TAG, "media player is started");
@@ -182,10 +320,60 @@ public class VideoWallpaperService extends WallpaperService {
                 } catch (Exception exc) {
                     Log.e(TAG,"Exception: "+exc.getMessage());
                 }
-            } else {
+            } else if (mVideoUri != null && !isVideo) {
+                Log.i(TAG, "Url is image");
+                mDrawThread = new Runnable() {
+                    @Override
+                    public void run() {
+                        setImageWallpaperMatrix();
+                        try {
+                            Thread.sleep(50);
+                        } catch (Exception exc) {
+                            Log.e(TAG, "[VideoEngine] exception error: "+exc.getMessage());
+                        }
+                        drawFrameToCanvas();
+                    }
+                };
+            }else {
                 Log.e(TAG,"video url is null");
             }
         }
+
+        /**
+         * get bitmap image and draw on the canvas
+         */
+        private void drawFrameToCanvas() {
+            Canvas mCanvas = null;
+            try {
+                if (mSurfaceHolder == null) {
+                    mSurfaceHolder = getSurfaceHolder();
+                }
+                if (mSurfaceHolder != null) {
+                    mCanvas = mSurfaceHolder.lockCanvas();
+                    if (mCanvas != null && mImageWallpaper != null) {
+                        mCanvas.drawBitmap(mImageWallpaper, 00.0f,00.0f, null);
+                    } else {
+                        Log.e(TAG, "[drawFrameToCanvas] canvas is null or bitmap null");
+                    }
+                } else {
+                    Log.e(TAG, "[drawFrameToCanvas] mSurfaceHolder is null");
+                }
+            } catch (Exception exc) {
+                Log.e(TAG, "[drawFrameToCanvas] exception error: "+exc.getMessage());
+            } finally {
+                if (mCanvas != null && mSurfaceHolder != null) mSurfaceHolder.unlockCanvasAndPost(mCanvas);
+            }
+
+            if (mHandler != null) {
+                mHandler.removeCallbacks(mDrawThread);
+                if (mVisible) mHandler.postDelayed(mDrawThread, 1000/mFrameRate);
+            } else {
+                Log.e(TAG, "[drawFrameToCanvas] handler thread is null");
+            }
+
+        }
+
+
 
         /**
          * call in visibility was changed
@@ -193,10 +381,13 @@ public class VideoWallpaperService extends WallpaperService {
          */
         @Override
         public void onVisibilityChanged(boolean visible) {
-            if (visible) {
+            mVisible = visible;
+            if (visible && !isVideo) {
                 Log.i(TAG, "Visibility true");
-            } else {
+                drawFrameToCanvas();
+            } else if (!visible && !isVideo) {
                 Log.i(TAG, "visibility false");
+                if (mHandler != null && mDrawThread != null) mHandler.removeCallbacks(mDrawThread);
             }
         }
 
@@ -210,6 +401,7 @@ public class VideoWallpaperService extends WallpaperService {
         @Override
         public void onSurfaceChanged(SurfaceHolder holder, int format, int width, int height){
             super.onSurfaceChanged(holder, format, width, height);
+            if (!isVideo) drawFrameToCanvas();
             Log.i(TAG, "surface is changed");
         }
 
@@ -224,16 +416,46 @@ public class VideoWallpaperService extends WallpaperService {
         }
 
         /**
+         * call when off set ahs been changed
+         * @param xOffset
+         * @param yOffset
+         * @param xStep
+         * @param yStep
+         * @param xPixels
+         * @param yPixels
+         */
+        @Override
+        public void onOffsetsChanged(float xOffset, float yOffset,
+                                     float xStep, float yStep, int xPixels, int yPixels) {
+            super.onOffsetsChanged(xOffset, yOffset,xStep, yStep,
+                    xPixels, yPixels);
+            if (!isVideo) drawFrameToCanvas();
+        }
+
+
+        /**
          * call when surface destroyed
          * @param holder
          */
         @Override
         public void onSurfaceDestroyed(SurfaceHolder holder) {
             super.onSurfaceDestroyed(holder);
-            if (mMediaPlayer != null) {
+            mVisible = false;
+            if (mMediaPlayer != null && isVideo) {
                 mMediaPlayer.setLooping(isLooping);
+            } else if (!isVideo) {
+                mHandler.removeCallbacks(mDrawThread);
             }
             Log.i(TAG, "surface is destroyed");
+        }
+
+        /**
+         * call when class destroy
+         */
+        @Override
+        public void onDestroy() {
+            super.onDestroy();
+            if (!isVideo && mDrawThread != null) mHandler.removeCallbacks(mDrawThread);
         }
     }
 }
