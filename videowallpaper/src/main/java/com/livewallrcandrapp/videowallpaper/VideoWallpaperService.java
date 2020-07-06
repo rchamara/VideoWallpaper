@@ -30,7 +30,7 @@ public class VideoWallpaperService extends WallpaperService {
     /**
      * media player instances
      */
-    private MediaPlayer mMediaPlayer;
+    private MediaPlayer mMediaPlayer = null;
 
     /**
      * broadcast receiver instance
@@ -132,8 +132,8 @@ public class VideoWallpaperService extends WallpaperService {
         if (mBroadcastReceiver != null) {
             Log.i(TAG, "[onDestroy] media player stopped and release");
             if (mMediaPlayer != null && isVideo) {
-                mMediaPlayer.stop();
                 mMediaPlayer.release();
+                mMediaPlayer = null;
             }
             unregisterReceiver(mBroadcastReceiver);
         }
